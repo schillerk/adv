@@ -5,13 +5,17 @@ body {
 }
 
 .select {
-	width: 200px;
+	width: 150px;
 	display: inline-block;
 	margin: 10px;
 }
 
 .layer-row {
 	margin-left: 20px;
+}
+
+input {
+	cursor: pointer;
 }
 
 .property-row {
