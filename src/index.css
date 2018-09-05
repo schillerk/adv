@@ -1,0 +1,33 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: sans-serif;
+}
+
+.select {
+	width: 200px;
+	display: inline-block;
+	margin: 10px;
+}
+
+.layer-row {
+	margin-left: 20px;
+}
+
+.property-row {
+	margin-left: 40px;
+}
+
+.button {
+	margin: 10px;
+	padding: 10px 20px;
+	border: 1px solid black;
+	border-radius: 2px;
+	display: inline-block;
+	cursor: pointer;
+	transition: .2s;
+}
+
+.button:hover {
+	background: #d6e6ff;
+}
