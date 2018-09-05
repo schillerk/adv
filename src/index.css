@@ -14,8 +14,16 @@ body {
 	margin-left: 20px;
 }
 
-input {
+input[type='checkbox'] {
 	cursor: pointer;
+}
+
+input {
+	margin-left: 5px;
+}
+
+.control {
+	margin-left: 10px;
 }
 
 .property-row {

@@ -58,34 +58,67 @@ const defaultEncodings = {
 const encodingMinMaxes = {
   x: [wMargin, width-2*wMargin],
   y: [height-2*hMargin, hMargin],
-  height: [height-2*hMargin, 5],
-  width: [5, width-2*wMargin],
+  height: [hMargin, height-2*hMargin],
+  width: [wMargin, width-2*wMargin],
   fill: ['red', 'blue'],
   size: [5, 15],
 }
 
-const getScale = (encoding, dataset, encodable) => {
+const getScale = (encoding, dataset, encodable, inverse) => {
   const min = getMin(dataset, encodable);
   const max = getMax(dataset, encodable);
+  const domain = inverse ? [max, min] : [min, max];
   return d3.scaleLinear()
-    .domain([min, max])
+    .domain(domain)
     .range(encodingMinMaxes[encoding]);
 }
 
-function encode(layerIdx, encoding, dataset, encodable) {
-  const svg = d3.select('#chart');
-  const rects = svg.selectAll('rect').filter(`.id-${layerIdx}`);
-  const scale = getScale(encoding, dataset, encodable);
-  rects.each(function(d, idx) {
-    const rect = d3.select(this);
-    if (encoding == 'size') {
-      rect
-        .attr('width', scale(data[dataset][idx][encodable]))
-        .attr('height', scale(data[dataset][idx][encodable]));
-
+function applyTransforms(v, transforms) {
+  if (!transforms.length) {
+    return v;
+  }
+  try {
+    return eval(transforms);
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      console.log('invalid transforms');
+      return v;
     }
-    rect.attr(encoding, scale(data[dataset][idx][encodable]));
-  })
+  }
+}
+
+function encode(layerIdx, inverse, encoding, dataset, encodable, transforms) {
+  const svg = d3.select('#chart');
+  const rects = svg.selectAll('rect').filter(`.rect-${layerIdx}`);
+  if (dataset != -1) {
+    const scale = getScale(encoding, dataset, encodable, inverse);
+    rects.each(function(d, idx) {
+      const rect = d3.select(this);
+      if (encoding == 'size') {
+        rect
+          .attr('width',
+            getData(scale, data[dataset][idx][encodable], transforms))
+          .attr('height',
+            getData(scale, data[dataset][idx][encodable], transforms));
+
+      } else {
+        rect
+          .attr(encoding,
+            getData(scale, data[dataset][idx][encodable], transforms));
+      }
+    })
+  } else {
+    rects.each(function(d, idx) {
+      const rect = d3.select(this);
+      if (encoding == 'size') {
+        rect
+          .attr('width', applyTransforms(0, transforms))
+          .attr('height', applyTransforms(0, transforms));
+      } else {
+        rect.attr(encoding, applyTransforms(0, transforms));
+      }
+    });
+  }
 }
 
 function findEncoding(val, data) {
@@ -97,23 +130,44 @@ function findEncoding(val, data) {
   })[0];
 }
 
-function connectDots(xDataset, xEncodable, yDataset, yEncodable, layerIdx) {
+function connectDots(xEncoding, yEncoding, layerIdx) {
+  const xDataset = xEncoding.dataset;
+  const xEncodable = xEncoding.encodable;
+  const xInverse = xEncoding.inverse;
+  const xTransforms = xEncoding.transforms;
+
+  const yDataset = yEncoding.dataset;
+  const yEncodable = yEncoding.encodable;
+  const yInverse = yEncoding.inverse;
+  const yTransforms = yEncoding.transforms;
+
   const svg = d3.select('#chart');
-  const line = svg.selectAll('path').filter(`.id-${layerIdx}`);
-  console.log(line);
-  console.log(layerIdx);
-  const scaleX = getScale('x', xDataset.value, xEncodable.value);
-  const scaleY = getScale('y', yDataset.value, yEncodable.value);
+  const line = svg.selectAll('path').filter(`.path-${layerIdx}`);
+
+  const xScale = getScale('x', xDataset.value, xEncodable.value, xInverse);
+  const yScale = getScale('y', yDataset.value, yEncodable.value, yInverse);
+
   let path = '';
   path += data[1].map((el, idx) => {
-    return 'L' + scaleX(data[xDataset.value][idx][xEncodable.value]) + ' ' + scaleY(data[yDataset.value][idx][yEncodable.value]) + ' ';
+    return 'L'
+      + getData(
+        xScale, data[xDataset.value][idx][xEncodable.value], xTransforms)
+      + ' '
+      + getData(
+        yScale, data[yDataset.value][idx][yEncodable.value], yTransforms)
+      + ' ';
   });
   path = "M" + path.slice(1);
   line
-    .attr('strokeWidth', 3)
+    .attr('stroke-width', 3)
     .attr('stroke', 'black')
     .attr('fill', 'none')
     .attr('d', path);
+}
+
+function getData(scale, val, transforms) {
+  console.log(val);
+  return applyTransforms(scale(val), transforms);
 }
 
 class App extends Component {
@@ -136,42 +190,47 @@ class App extends Component {
     const { layers } = this.state;
     const svg = d3.select('#chart-svg');
 
-    svg.selectAll('rect').remove();
+    // svg.selectAll('rect').remove();
     svg.selectAll('path').remove();
 
     layers.forEach((layer, layerIdx) => {
       const { properties } = layer;
-      data[0].forEach((el, idx) => {
+      if (svg.selectAll('rect').filter(`.rect-${layerIdx}`).empty()) {
+        data[0].forEach((el, idx) => {
         svg.append('svg:rect')
-          .attr('class', `id-${layerIdx}`)
+          .attr('class', `rect-${layerIdx}`)
           .attr('x', defaultEncodings.x)
           .attr('y', defaultEncodings.y)
           .attr('width', defaultEncodings.width)
           .attr('height', defaultEncodings.height);
-      })
+        })
+      }
+
+      if (properties.plotLine) {
+        svg.append('svg:path').attr('class', `path-${layerIdx}`);
+        const xEncoding = findEncoding('x', layers[layerIdx].properties.data);
+        const yEncoding = findEncoding('y', layers[layerIdx].properties.data);
+        if (this.canPlotLine(layerIdx)) {
+          connectDots(
+            xEncoding,
+            yEncoding,
+            layerIdx,
+            xEncoding.transforms,
+          );
+        }
+      }
 
       properties.data.forEach(property => {
         if (property.encoding.value &&
-          (property.dataset.value != -1 && property.encodable.value)
-        ) {
+          (property.encodable.value)) {
           encode(
             layerIdx,
+            property.inverse,
             property.encoding.value,
             property.dataset.value,
             property.encodable.value,
+            property.transforms,
           );
-        }
-        if (properties.plotLine) {
-          svg.append('svg:path').attr('class', `id-${layerIdx}`);
-          const xEncoding = findEncoding('x', layers[layerIdx].properties.data);
-          const yEncoding = findEncoding('y', layers[layerIdx].properties.data);
-          if (this.canPlotLine(layerIdx)) {
-            const xDataset = xEncoding.dataset;
-            const xEncodable = xEncoding.encodable;
-            const yDataset = yEncoding.dataset;
-            const yEncodable = yEncoding.encodable;
-            connectDots(xDataset, xEncodable, yDataset, yEncodable, layerIdx);
-          }
         }
       })
     })
@@ -199,8 +258,10 @@ class App extends Component {
   createNewProperty(idx) {
     const { layers } = this.state;
     layers[idx].properties.data.push({
+      transforms: 'v',
+      inverse: false,
       encoding: '',
-      dataset: { value: -1, label: 'none' },
+      dataset: { value: -1, label: 'Constant' },
       encodable: '',
     });
     this.setState({ layers });
@@ -247,11 +308,50 @@ class App extends Component {
   maybeRenderLineCheckbox(layerIdx) {
    return this.canPlotLine(layerIdx) && (
       <span>
+        Plot Line
         <input
           type="checkbox"
           onClick={this.handlePlotLine.bind(this, layerIdx)}
         />
-        Plot Line
+      </span>
+    );
+  }
+
+  handleInverse(layerIdx, rowIdx) {
+   const { layers } = this.state;
+    layers[layerIdx].properties.data[rowIdx].inverse =
+      !layers[layerIdx].properties.data[rowIdx].inverse;
+    this.setState({ layers });
+  }
+
+  renderInverseCheckbox(layerIdx, rowIdx) {
+    return (
+      <span>
+        Inverse
+        <input
+          type="checkbox"
+          onClick={this.handleInverse.bind(this, layerIdx, rowIdx)}
+        />
+      </span>
+    );
+  }
+
+  handleTransformsChange(layerIdx, rowIdx, e) {
+    const { layers } = this.state;
+    layers[layerIdx].properties.data[rowIdx].transforms = e.target.value;
+    this.setState({ layers });
+  }
+
+  renderTransformsInput(layerIdx, rowIdx) {
+    const { layers } = this.state;
+    return (
+      <span className="control">
+        Transforms
+        <input
+          type="text"
+          value={layers[layerIdx].properties.data[rowIdx].transforms}
+          onChange={this.handleTransformsChange.bind(this, layerIdx, rowIdx)}
+        />
       </span>
     );
   }
@@ -261,13 +361,17 @@ class App extends Component {
     return layers.map((layer, layerIdx) => {
       const propertyRows = layer.properties.data.map((row, rowIdx) => {
         const encodingOptions = encodingsList.map(encoding => {
-          return { value: encoding, label: encoding }
+          return { value: encoding, label: encoding };
         });
-        const datasetOptions = rawData.map((dataset, layerIdx) => {
-          return { value: layerIdx, label: dataset.name };
+        const datasetOptions = rawData.map((dataset, dataIdx) => {
+          return { value: dataIdx, label: dataset.name };
+        });
+        datasetOptions.push({
+          value: -1,
+          label: 'Constant',
         })
         const propertyRow = (
-          <div className="property-row">
+          <div className="property-row" key={rowIdx}>
             {rowIdx}
             <Select
               className="select"
@@ -282,12 +386,14 @@ class App extends Component {
               options={datasetOptions}
             />
             {this.maybeRenderEncodables(layerIdx, rowIdx)}
+            {this.renderInverseCheckbox(layerIdx, rowIdx)}
+            {this.renderTransformsInput(layerIdx, rowIdx)}
           </div>
         );
         return propertyRow;
       });
       return (
-        <div className="layer-row">
+        <div className="layer-row" key={layerIdx}>
           <div className="button" onClick={this.createNewProperty.bind(this, layerIdx)}>
             New Property
           </div>
