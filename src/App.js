@@ -13,17 +13,17 @@ const rawData = [
   {
     name: 'dataset 0',
     time: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    value: [11, 7, 4, 4, 10, 5, 6, 3, 3, 6, 3, 1] ,
+    value: [11, 7, 4, 4, 10, 5, 6, 3, 3, 6, 3] ,
   },
   {
     name: 'dataset 1',
     time: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    value: [-11, -7, -4, -4, -10, 5, 6, 3, 3, 6, 3, 1] ,
+    value: [-11, -7, -4, -4, -10, 5, 6, 3, 3, 6, 3] ,
   },
   {
     name: 'dataset 2',
     time: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    value: [-.11, .7, .4, .4, .10, 5, 6, 3, 3, .6, .3, .1] ,
+    value: [-.11, .7, .4, .4, .10, 5, 6, 3, 3, .6, .3] ,
   },
 ]
 
@@ -87,25 +87,40 @@ function applyTransforms(v, transforms) {
   }
 }
 
-function encode(layerIdx, inverse, encoding, dataset, encodable, transforms) {
+function maybeRestoreDefaults(layerIdx, data) {
+   //= ['x', 'y', 'height', 'width', 'fill', 'size'];
+  encodingsList.map(encoding => {
+
+  });
+}
+
+function encode(layerIdx, inverse, encoding, dataset, encodable, transforms, scale) {
   const svg = d3.select('#chart');
   const rects = svg.selectAll('rect').filter(`.rect-${layerIdx}`);
   if (dataset != -1) {
-    const scale = getScale(encoding, dataset, encodable, inverse);
     rects.each(function(d, idx) {
       const rect = d3.select(this);
-      if (encoding == 'size') {
-        rect
-          .attr('width',
-            getData(scale, data[dataset][idx][encodable], transforms))
-          .attr('height',
-            getData(scale, data[dataset][idx][encodable], transforms));
+      // if (encoding == 'size') {);
+      //   rect
+      //     .attr('width',
+      //       getData(scale, data[dataset][idx][encodable], transforms))
+      //     .attr('height',
+      //       getData(scale, data[dataset][idx][encodable], transforms));
 
-      } else {
-        rect
-          .attr(encoding,
-            getData(scale, data[dataset][idx][encodable], transforms));
-      }
+      // } else {
+        const currVal = rect.attr(encoding);
+        const newVal = getData(scale, data[dataset][idx][encodable], transforms);
+        rect.call(function (rectEl) {
+          d3.select({})
+          .transition()
+          .duration(300)
+          .ease(d3.easeCubicInOut)
+          .tween(`attr:${encoding}`, function() {
+            const i = d3.interpolateNumber(currVal, newVal);
+            return function(t) { rectEl.attr(encoding, i(t)); };
+          });
+        })
+      // }
     })
   } else {
     rects.each(function(d, idx) {
@@ -162,11 +177,12 @@ function connectDots(xEncoding, yEncoding, layerIdx) {
     .attr('stroke-width', 3)
     .attr('stroke', 'black')
     .attr('fill', 'none')
+    .transition()
+    .duration(300)
     .attr('d', path);
 }
 
 function getData(scale, val, transforms) {
-  console.log(val);
   return applyTransforms(scale(val), transforms);
 }
 
@@ -190,9 +206,6 @@ class App extends Component {
     const { layers } = this.state;
     const svg = d3.select('#chart-svg');
 
-    // svg.selectAll('rect').remove();
-    svg.selectAll('path').remove();
-
     layers.forEach((layer, layerIdx) => {
       const { properties } = layer;
       if (svg.selectAll('rect').filter(`.rect-${layerIdx}`).empty()) {
@@ -206,8 +219,11 @@ class App extends Component {
         })
       }
 
-      if (properties.plotLine) {
+      if (svg.selectAll('path').filter(`.path-${layerIdx}`).empty()) {
         svg.append('svg:path').attr('class', `path-${layerIdx}`);
+      }
+
+      if (properties.plotLine) {
         const xEncoding = findEncoding('x', layers[layerIdx].properties.data);
         const yEncoding = findEncoding('y', layers[layerIdx].properties.data);
         if (this.canPlotLine(layerIdx)) {
@@ -218,19 +234,46 @@ class App extends Component {
             xEncoding.transforms,
           );
         }
+      } else {
+        svg.selectAll('path').filter(`.path-${layerIdx}`).remove();
       }
 
       properties.data.forEach(property => {
         if (property.encoding.value &&
           (property.encodable.value)) {
-          encode(
-            layerIdx,
-            property.inverse,
-            property.encoding.value,
-            property.dataset.value,
-            property.encodable.value,
-            property.transforms,
-          );
+          const { encoding, dataset, encodable, inverse } = property;
+          const scale = getScale(encoding.value, dataset.value, encodable.value, inverse);
+          maybeRestoreDefaults(layerIdx, layers[layerIdx].properties.data)
+          if (property.encoding == 'size') {
+            encode(
+              layerIdx,
+              property.inverse,
+              'height',
+              property.dataset.value,
+              property.encodable.value,
+              property.transforms,
+              scale,
+            );
+            encode(
+              layerIdx,
+              property.inverse,
+              'width',
+              property.dataset.value,
+              property.encodable.value,
+              property.transforms,
+              scale,
+            );
+          } else {
+            encode(
+              layerIdx,
+              property.inverse,
+              property.encoding.value,
+              property.dataset.value,
+              property.encodable.value,
+              property.transforms,
+              scale,
+            );
+          }
         }
       })
     })
